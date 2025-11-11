@@ -3,13 +3,13 @@ import { HashRouter, Routes, Route, useNavigate, useLocation, Link, Navigate, Ou
 import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 import { BigFiveScores, BigFiveTrait, Checkin, EnergyLevel, PersonalizedMessage } from './types';
-import { TIPI_QUESTIONS } from './constants';
+import { TIPI_QUESTIONS, BIG_FIVE_TRAIT_LABELS } from './constants';
 import { HomeIcon, HistoryIcon, SettingsIcon, ArrowRightIcon, ArrowLeftIcon, MenuIcon, CloseIcon } from './components/Icons';
 import BigFiveRadarChart from './components/BigFiveRadarChart';
 import CheckinModal from './components/CheckinModal';
 import { getPersonalizedMessage } from './services/aiService';
 
-// Mock data
+// モックデータ
 const mockCheckinHistory: Checkin[] = [
     { id: 'c4', date: new Date(2025, 9, 13, 14, 30), mood: 5, energy: 'high', note: 'プロジェクトが順調に進んで嬉しい' },
     { id: 'c3', date: new Date(2025, 9, 12, 9, 15), mood: 3, energy: 'medium', note: '少し疲れ気味' },
@@ -39,7 +39,7 @@ const mockUserScores: BigFiveScores = {
 };
 
 
-// --- Helper Components (defined outside main components to prevent re-renders) ---
+// --- 補助コンポーネント（不要な再レンダーを避けるため外部に定義） ---
 
 const FeatureListItem: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <li className="flex items-center">
@@ -104,23 +104,23 @@ const BottomNav: React.FC = () => {
     );
 };
 
-// --- Dev Nav Component for easy screen access ---
+// --- 開発時に各画面へ素早く移動するためのナビ ---
 const DevNav: React.FC = () => {
     const [isOpen, setIsOpen] = useState(false);
     const pages = [
-        { path: '/', name: 'Landing' },
-        { path: '/auth', name: 'Auth' },
-        { path: '/app/onboarding', name: 'Onboarding' },
-        { path: '/app/home', name: 'Home' },
-        { path: '/app/history', name: 'History' },
-        { path: '/app/settings', name: 'Settings' },
+        { path: '/', name: 'ランディング' },
+        { path: '/auth', name: '認証' },
+        { path: '/app/onboarding', name: 'オンボーディング' },
+        { path: '/app/home', name: 'ホーム' },
+        { path: '/app/history', name: '履歴' },
+        { path: '/app/settings', name: '設定' },
     ];
 
     return (
         <div className="fixed bottom-24 right-4 z-50 font-sans">
             {isOpen && (
                 <div className="bg-white rounded-lg shadow-xl p-2 mb-2 flex flex-col items-start space-y-1 w-40">
-                    <p className="px-3 py-1 text-xs text-neutral-400">Dev Navigation</p>
+                    <p className="px-3 py-1 text-xs text-neutral-400">開発用ナビ</p>
                     {pages.map(page => (
                         <Link key={page.path} to={page.path} onClick={() => setIsOpen(false)} className="w-full text-left px-3 py-1 rounded hover:bg-neutral-100 text-neutral-800">
                             {page.name}
@@ -131,7 +131,7 @@ const DevNav: React.FC = () => {
             <button
                 onClick={() => setIsOpen(!isOpen)}
                 className="bg-accent text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center focus:outline-none"
-                aria-label="Developer Navigation"
+                aria-label="開発用ナビゲーション"
             >
                 <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4" /></svg>
             </button>
@@ -140,7 +140,7 @@ const DevNav: React.FC = () => {
 };
 
 
-// --- Page Components ---
+// --- 各ページコンポーネント ---
 
 const LandingPage: React.FC = () => {
     const navigate = useNavigate();
@@ -193,7 +193,7 @@ const AuthPage: React.FC = () => {
     return (
         <div className="min-h-screen bg-neutral-100 flex flex-col justify-center items-center p-4">
             <div className="max-w-md w-full bg-white p-8 rounded-xl shadow-md relative">
-                <button onClick={() => navigate(-1)} className="absolute top-4 left-4 text-neutral-500 hover:text-neutral-800 transition-colors" aria-label="Go Back">
+                <button onClick={() => navigate(-1)} className="absolute top-4 left-4 text-neutral-500 hover:text-neutral-800 transition-colors" aria-label="前の画面に戻る">
                     <ArrowLeftIcon className="w-6 h-6" />
                 </button>
                 <div className="text-center">
@@ -203,7 +203,7 @@ const AuthPage: React.FC = () => {
                     <div className="space-y-4">
                         <input
                             type="email"
-                            placeholder="📧 your@email.com"
+                            placeholder="📧 メールアドレスを入力"
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             className="w-full px-4 py-3 border-2 border-neutral-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition"
@@ -293,15 +293,15 @@ const OnboardingPage: React.FC = () => {
         return (
             <div className="min-h-screen bg-white flex flex-col justify-center items-center p-6">
                 <div className="max-w-md w-full relative">
-                    <button onClick={() => navigate(-1)} className="absolute -top-16 left-0 text-neutral-500 hover:text-neutral-800 transition-colors" aria-label="Go Back">
+                    <button onClick={() => navigate(-1)} className="absolute -top-16 left-0 text-neutral-500 hover:text-neutral-800 transition-colors" aria-label="前の画面に戻る">
                         <ArrowLeftIcon className="w-6 h-6" />
                     </button>
                     <div className="text-center">
                         <h1 className="text-3xl font-bold text-neutral-800 mb-4">👋 ようこそ Trait Flow へ</h1>
                         <p className="text-neutral-600 mb-6">まず、あなたの性格特性を理解するために<br />簡単な10問のアンケートに答えてください</p>
                         <div className="bg-blue-50 border-l-4 border-primary p-4 rounded-r-lg text-left mb-6">
-                            <h2 className="font-bold text-primary">TIPI (Ten-Item Personality Inventory)</h2>
-                            <p className="text-sm text-neutral-700">Big Five性格特性モデルに基づいた科学的に検証された質問票です。</p>
+                            <h2 className="font-bold text-primary">TIPI（テンアイテム・パーソナリティ検査）</h2>
+                            <p className="text-sm text-neutral-700">Big Five 性格特性モデルに基づいた科学的に検証された質問票です。</p>
                         </div>
                         <p className="text-neutral-500 mb-8">全2ページ（各5問）・所要時間 約3分</p>
                         <button onClick={startQuestionnaire} className="w-full bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors duration-200 shadow-sm flex items-center justify-center">
@@ -375,12 +375,16 @@ const OnboardingPage: React.FC = () => {
                     </div>
                     <div className="text-left space-y-3 bg-neutral-50 p-4 rounded-lg mb-6">
                         <h2 className="font-bold text-lg mb-2">【あなたの特徴】</h2>
-                        {Object.entries(scores).map(([trait, score]) => (
-                            <div key={trait}>
-                                <p className="font-bold text-primary">{trait}: <span className="text-neutral-800">{score.toFixed(1)}/7</span></p>
-                                <p className="text-sm text-neutral-600">{trait}が{score > 4.5 ? '高い' : score < 3.5 ? '低い' : '中程度'}傾向にあります。</p>
-                            </div>
-                        ))}
+                        {Object.entries(scores).map(([traitKey, score]) => {
+                            const typedTrait = traitKey as BigFiveTrait;
+                            const label = BIG_FIVE_TRAIT_LABELS[typedTrait];
+                            return (
+                                <div key={traitKey}>
+                                    <p className="font-bold text-primary">{label}: <span className="text-neutral-800">{score.toFixed(1)}/7</span></p>
+                                    <p className="text-sm text-neutral-600">{label}が{score > 4.5 ? '高い' : score < 3.5 ? '低い' : '中程度'}傾向にあります。</p>
+                                </div>
+                            );
+                        })}
                     </div>
                     <button onClick={() => navigate('/app/home')} className="w-full bg-primary text-white font-bold py-3 px-4 rounded-lg hover:bg-primary-dark transition-colors duration-200 shadow-sm flex items-center justify-center">
                         ホームへ <ArrowRightIcon className="w-5 h-5 ml-2" />
@@ -412,7 +416,7 @@ const HomePage: React.FC = () => {
     }, []);
 
     const handleSaveCheckin = async (checkinData: Omit<Checkin, 'id' | 'date'>) => {
-        // In the real app this would persist to the backend and refresh state.
+        // 実運用ではバックエンドに保存し、状態を更新する想定
         const latestCheckin: Checkin = {
             id: `temp-${Date.now()}`,
             date: new Date(),
@@ -431,7 +435,7 @@ const HomePage: React.FC = () => {
                 <p className="text-neutral-600">今日も一日を大切に過ごしましょう</p>
             </div>
             
-            {/* Today's Message Card */}
+            {/* 今日のメッセージカード */}
             <div className="bg-white p-5 rounded-xl shadow-md border border-neutral-200">
                 <h3 className="text-lg font-bold text-primary mb-3">📬 今日のメッセージ</h3>
                 {loadingMessage ? (
@@ -450,7 +454,7 @@ const HomePage: React.FC = () => {
                 </div>
             </div>
 
-            {/* Check-in Card */}
+            {/* チェックインカード */}
             <div className="bg-white p-5 rounded-xl shadow-md border border-neutral-200">
                 <h3 className="text-lg font-bold text-secondary mb-2">✍️ 今日のチェックイン</h3>
                 <p className="text-neutral-600 mb-4">気分とエネルギーレベルを記録しましょう</p>
@@ -478,7 +482,7 @@ const MessageDetailDrawer: React.FC<MessageDetailDrawerProps> = ({ message, onCl
         <div className="fixed inset-0 flex justify-end z-40">
             <button
                 className="flex-1 bg-black/30"
-                aria-label="Close drawer overlay"
+                aria-label="詳細パネルを閉じる"
                 onClick={onClose}
             />
             <div className="w-full max-w-md h-full bg-white shadow-2xl p-6 animate-drawer-slide flex flex-col">
@@ -493,7 +497,7 @@ const MessageDetailDrawer: React.FC<MessageDetailDrawerProps> = ({ message, onCl
                     <p className="text-neutral-700 leading-relaxed whitespace-pre-line">{message.text}</p>
                 </div>
                 <div className="mt-6 p-4 bg-neutral-50 border border-neutral-200 rounded-lg text-sm text-neutral-600 space-y-1">
-                    <p>基準となった特性: <span className="font-semibold text-neutral-800">{message.personalizationInfo.baseTrait}</span></p>
+                    <p>基準となった特性: <span className="font-semibold text-neutral-800">{BIG_FIVE_TRAIT_LABELS[message.personalizationInfo.baseTrait]}</span></p>
                     <p>チェックイン気分: <span className="font-semibold text-neutral-800">{message.personalizationInfo.mood}/5</span></p>
                     <p>エネルギー: <span className="font-semibold text-neutral-800">{message.personalizationInfo.energy}</span></p>
                 </div>

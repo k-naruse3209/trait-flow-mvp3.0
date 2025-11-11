@@ -1,13 +1,13 @@
 
 import { BigFiveScores, PersonalizedMessage, BigFiveTrait, Checkin } from '../types';
 
-// This is a mock service. In a real application, this would interact with the Gemini API.
+// Gemini API と連携する前提のモックサービス
 export const getPersonalizedMessage = async (
   scores: BigFiveScores,
   latestCheckin: Checkin | null
 ): Promise<PersonalizedMessage> => {
   
-  // Simulate network delay
+  // 擬似的なネットワーク遅延
   await new Promise(resolve => setTimeout(resolve, 800));
 
   let baseTrait = BigFiveTrait.Agreeableness;

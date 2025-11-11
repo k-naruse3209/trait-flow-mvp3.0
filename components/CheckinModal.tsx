@@ -170,7 +170,7 @@ const CheckinModal: React.FC<CheckinModalProps> = ({ isOpen, onClose, onSave }) 
               onClick={handleClose}
               className="w-full bg-secondary text-white font-bold py-3 px-4 rounded-lg hover:bg-secondary-dark transition-colors duration-200 shadow-sm"
             >
-              OK
+              閉じる
             </button>
           )}
         </div>

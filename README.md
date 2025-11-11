@@ -2,47 +2,46 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# AI Studio アプリの実行とデプロイ
 
-This contains everything you need to run your app locally.
+このリポジトリには、AI Studio で作成したアプリをローカルで動かしたり、本番環境にデプロイしたりするためのファイルが一式そろっています。
 
-View your app in AI Studio: https://ai.studio/apps/drive/1HDEDL9GTki0WyE3JGkHue6dTsWu7HsDI
+AI Studio 上でアプリを確認する: https://ai.studio/apps/drive/1HDEDL9GTki0WyE3JGkHue6dTsWu7HsDI
 
-## Run Locally
+## ローカルでの実行方法
 
-**Prerequisites:**  Node.js
+**前提条件:** Node.js がインストールされていること
 
-
-1. Install dependencies:
+1. 依存関係をインストール  
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+2. Gemini の API キーを `.env.local` の `GEMINI_API_KEY` に設定
+3. 開発サーバーを起動  
    `npm run dev`
 
-## Deploy to Google Cloud Run
+## Google Cloud Run へのデプロイ
 
-The repository already includes a production-ready Dockerfile that builds the Vite app and serves the compiled assets through Nginx. Follow the steps below to deploy to Cloud Run.
+このリポジトリには、本番運用を想定した Dockerfile が含まれており、Vite でビルドした成果物を Nginx で配信する構成になっています。以下の手順で Cloud Run へデプロイできます。
 
-1. **Authenticate and set project**
+1. **認証とプロジェクトの指定**
    ```bash
    gcloud auth login
    gcloud config set project YOUR_PROJECT_ID
    ```
 
-2. **Enable required services (once per project)**
+2. **必要なサービスの有効化（初回のみ）**
    ```bash
    gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
    ```
 
-3. **Build and push the container image**  
-   Cloud Run expects the service to listen on the port provided by the `PORT` environment variable. The provided `start.sh` script and `nginx.conf.template` handle this automatically.
+3. **コンテナイメージのビルドとプッシュ**  
+   Cloud Run では `PORT` 環境変数で渡されるポートで待ち受ける必要があります。`start.sh` と `nginx.conf.template` が自動で対応します。
    ```bash
    gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT_ID/trait-flow/trait-flow-ui
    ```
-   - Replace `REGION` with a supported Artifact Registry region (e.g. `asia-northeast1`).
-   - The first run will create the Docker repository (`trait-flow`) if it does not exist.
+   - `REGION` は利用可能な Artifact Registry のリージョン（例: `asia-northeast1`）に置き換えてください。
+   - 初回実行時は `trait-flow` というリポジトリが自動作成されます。
 
-4. **Deploy to Cloud Run**
+4. **Cloud Run へデプロイ**
    ```bash
    gcloud run deploy trait-flow-ui \
      --image REGION-docker.pkg.dev/YOUR_PROJECT_ID/trait-flow/trait-flow-ui \
@@ -50,11 +49,11 @@ The repository already includes a production-ready Dockerfile that builds the Vi
      --region REGION \
      --allow-unauthenticated
    ```
-   After a few moments Cloud Run will output the service URL. The React app is static, so no additional environment variables are required at runtime.
+   数十秒待つと Cloud Run からサービス URL が表示されます。アプリは静的サイトなので、実行時に追加の環境変数を設定する必要はありません。
 
-5. **(Optional) Test locally with Docker**
+5. **（任意）Docker でローカル確認**
    ```bash
-    docker build -t trait-flow-ui .
-    docker run -p 8080:8080 trait-flow-ui
+   docker build -t trait-flow-ui .
+   docker run -p 8080:8080 trait-flow-ui
    ```
-   Visit http://localhost:8080 to confirm the build before deploying.
+   http://localhost:8080 にアクセスして、デプロイ前に挙動を確認できます。
