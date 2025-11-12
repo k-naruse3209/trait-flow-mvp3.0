@@ -145,6 +145,14 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 4. **Moderation / 安全性**: LLM レスポンスを受信後、必ず２段階チェック（LLM 側の safety + 社内規約チェック）を実施し、NG の場合は `interventions.use_fallback = true` でテンプレート文を挿入。`audit_log` にはプロンプト/レスポンス/判定理由を保存し、将来の外部監査にも備える。  
 5. **ジョブ整列**: `intervention_jobs` の `status` 列を `queued / processing / succeeded / failed / suppressed` に拡張し、Supabase Edge Functions で `max_attempts` を超えたジョブは `suppressed` へ移動（オペレーターが原因調査できるよう Slack にリンクを送る）。
 
+### 8.2.1 データフロー詳細
+1. **入力～保存**: ユーザーの TIPI やチェックインは Web UI → Supabase Auth → Edge Function → `baseline_traits` / `checkins` に保存され、同時に `behavior_events`・`audit_log` に書き込まれる。  
+2. **RAG 同期**: 保存直後に Edge Function もしくは nightly ETL で `checkins`, `interventions`, `behavior_events` から embedding を生成し、Vector DB（Supabase Vector / AlloyDB）へアップサート。メタ情報として `user_id`, `checkin_id`, `timestamp`, `topics` を保持。  
+3. **ジョブ投入**: `checkins` 作成後、`intervention_jobs` に `payload`（最新チェックイン ID／ユーザー特徴／RAG クエリパラメータ）を enqueue。`audit_log` にはジョブ ID とハッシュを残す。  
+4. **介入生成**: `processIntervention` が `intervention_jobs` からジョブを取得し、Vector DB に Top-K クエリ→得られた文脈（直近のムード/行動/過去介入結果）を LLM プロンプトへ注入。Structured Output で `{title, body, tone, references}` を要求し、結果を `interventions` に保存。  
+5. **Moderation & ガードレール**: LLM 応答を guardrail モデルに通し、NG の場合は `use_fallback=true` でテンプレート文を保存。すべてのプロンプト/応答/コンテキストは `audit_log` に保存し、Slack へアラート。  
+6. **承認と配信**: オペレーターが `interventions` をレビューし `approval_status` を更新。Approved のみ `behavior_events` に書き出され、UI からユーザーへ配信される。ユーザー評価も `behavior_events` と `interventions` に追記され、次回の RAG/Fine-tuning データソースになる。
+
 ### 8.3 運用ワークフロー
 1. **オペレーター承認**: `intervention_plans` または `interventions` に `approval_status` 列を追加し、UI で Pending → Approved/Rejected を切り替え。Rejected の場合は `audit_log` に理由を記録。  
 2. **オンコール手順**: エラーアラートを受けたら Cloud Logging で `trace_id` を確認 → Supabase の `behavior_events` / `audit_log` を参照 → 必要なら `intervention_jobs` に再投入。手順を runbook として README 末尾にリンク。  
