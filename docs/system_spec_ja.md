@@ -38,7 +38,6 @@
    メッセージカードを開き評価（1〜5）を送信 → `feedback_score` 更新。
 
 ## 4. システム構成
-```mermaid
 flowchart LR
   subgraph Client[React / Cloud Run]
     Landing --> Auth --> Onboarding --> App
@@ -60,7 +59,7 @@ flowchart LR
   end
 
   subgraph Google["Google Cloud"]
-    LLM[LLM API (engineer-selected)]
+    LLM[LLM API - engineer-selected]
     Slack[Slack Webhook]
   end
 
