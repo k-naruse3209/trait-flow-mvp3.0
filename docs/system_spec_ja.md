@@ -153,6 +153,72 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 5. **Moderation & ガードレール**: LLM 応答を guardrail モデルに通し、NG の場合は `use_fallback=true` でテンプレート文を保存。すべてのプロンプト/応答/コンテキストは `audit_log` に保存し、Slack へアラート。  
 6. **承認と配信**: オペレーターが `interventions` をレビューし `approval_status` を更新。Approved のみ `behavior_events` に書き出され、UI からユーザーへ配信される。ユーザー評価も `behavior_events` と `interventions` に追記され、次回の RAG/Fine-tuning データソースになる。
 
+#### 8.2.1.1 データフロー図
+```mermaid
+flowchart LR
+  U[User] --> UI[Web UI]
+  UI --> Auth[Supabase Auth]
+  Auth --> Edge[Edge Function]
+  Edge --> Checkins[(checkins)]
+  Edge --> Baseline[(baseline_traits)]
+  Edge --> Audit1[audit_log]
+  Edge --> Events1[(behavior_events)]
+
+  Checkins --> Queue[(intervention_jobs)]
+  Checkins --> VecSync[Embedding ETL]
+  VecSync --> VecDB[Vector DB]
+  Queue --> Worker[processIntervention]
+  Worker --> VecDB
+  VecDB --> Worker
+  Worker --> LLM[LLM API / Fine-tuned]
+  LLM --> Guard[Moderation / Guardrail]
+  Guard --> Interventions[(interventions)]
+  Interventions --> Audit2[audit_log]
+  Interventions --> Operator[Operator Review]
+  Operator --> Events2[(behavior_events)]
+  Events2 --> UI
+```
+
+#### 8.2.1.2 シーケンス図
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI
+    participant Auth as Supabase Auth
+    participant Edge as Edge Fn
+    participant DB as Supabase DB
+    participant Events as behavior_events
+    participant Audit as audit_log
+    participant Queue as intervention_jobs
+    participant Vec as Vector DB
+    participant Worker as processIntervention
+    participant LLM as LLM/Fine-tuned
+    participant Guard as Moderation
+    participant Operator
+
+    User->>UI: TIPI / Check-in
+    UI->>Auth: JWT 認証
+    UI->>Edge: POST データ
+    Edge->>DB: baseline_traits / checkins 保存
+    Edge->>Events: ログ追記
+    Edge->>Audit: I/O 記録
+    Edge->>Queue: Job enqueue
+    Edge->>Vec: Embedding アップサート
+
+    Worker->>Queue: Job dequeue
+    Worker->>Vec: Top-K クエリ
+    Vec-->>Worker: コンテキスト
+    Worker->>LLM: Structured Output リクエスト
+    LLM-->>Worker: 応答
+    Worker->>Guard: Moderation
+    Guard-->>Worker: OK / NG
+    Worker->>DB: interventions 保存
+    Worker->>Audit: プロンプト/レスポンスログ
+    Operator->>DB: 承認/Reject
+    Operator->>Events: 配信結果保存
+    UI->>User: 承認済み AI メッセージ表示
+```
+
 ### 8.3 運用ワークフロー
 1. **オペレーター承認**: `intervention_plans` または `interventions` に `approval_status` 列を追加し、UI で Pending → Approved/Rejected を切り替え。Rejected の場合は `audit_log` に理由を記録。  
 2. **オンコール手順**: エラーアラートを受けたら Cloud Logging で `trace_id` を確認 → Supabase の `behavior_events` / `audit_log` を参照 → 必要なら `intervention_jobs` に再投入。手順を runbook として README 末尾にリンク。  
