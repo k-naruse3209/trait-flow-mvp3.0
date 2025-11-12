@@ -126,10 +126,10 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 | 項目 | 要件 |
 | --- | --- |
 | データ保存 | Supabase PostgreSQL スキーマは本番でも再利用できるよう追記専用・RLS を維持。`baseline_traits`/`checkins`/`interventions`/`behavior_events` をそのまま解析・再処理に活用できる。 |
-| AI 生成管制 | LLM API は Structured Output/Moderation を必須とし、Secret Manager + Edge Functions でキー・リトライを集中管理。Cloud Scheduler でジョブ再処理やキー切替も自動化できる。 |
+| AI 生成管制 | LLM API は Structured Output/Moderation を必須とし、Secret Manager + Edge Functions でキー・リトライを集中管理。Cloud Scheduler でジョブ再処理やキー切替も自動化できる。TIPI/チェックイン履歴は RAG 用のベクトルDB（例: Supabase Vector / AlloyDB）へ同期し、長期文脈を動的に取得できるようにする。 |
 | 信頼性 | `intervention_jobs` + `processIntervention` でジョブ化し、冪等キーと再試行を保持。レスポンス ≤5 秒・成功率 ≥97% の SLO を Cloud Logging/Slack で監視。 |
 | 運用 | `audit_log` とメッセージ評価を手動レビューに使い、段階的に自動化比率を上げてもトレーサビリティを維持。 |
-| 追加施策 | 認証強化（MFA、IP 制限）、通知チャネル拡張、課金やPIIガバナンスを追加するだけで「ユーザー回答を保存・分析しつつ AI フィードバックを生成する」プロダクション対応構成へ移行可能。 |
+| 追加施策 | 認証強化（MFA、IP 制限）、通知チャネル拡張、課金やPIIガバナンス、Fine-tuning / Guardrail モデル導入を追加するだけで「ユーザー回答を保存・分析しつつ AI フィードバックを生成する」プロダクション対応構成へ移行可能。 |
 
 ### 8.1 データ保存・分析を本番化する手順
 1. **RLS とロール整備**: Supabase で `service_role`（Edge Functions 用）と `authenticated`（UI 用）に分離し、`users`, `baseline_traits`, `checkins`, `interventions`, `behavior_events`, `audit_log` すべてで `user_id = auth.uid()` の RLS を有効化。  
@@ -170,10 +170,13 @@ flowchart LR
     Scheduler[Cloud Scheduler]
     Slack[Slack Alerts]
     Audit[audit_log]
+    Vec[Vector DB / RAG Store]
   end
 
   Worker -->|Structured Output| LLMAPI[LLM API]
   Worker -->|Moderation| Mod[Safety Checks]
+  Worker --> Vec
+  Vec --> Worker
   Worker --> Slack
   Worker --> Audit
   Edge --> Audit
@@ -207,6 +210,8 @@ sequenceDiagram
     Worker->>Queue: job dequeue
     Worker->>LLM: Structured Output リクエスト
     LLM-->>Worker: 応答 or エラー
+    Worker->>Vec: ユーザーメモ/履歴をクエリ
+    Vec-->>Worker: コンテキストドキュメント
     Worker->>Mod: Safety/Moderation 判定
     Worker->>DB: interventions へ保存
     Worker->>Slack: エラー通知（必要時）
@@ -215,6 +220,13 @@ sequenceDiagram
     Operator->>UI: 承認結果
     UI->>User: AI メッセージ表示
 ```
+
+### 8.6 RAG / Fine-tuning 拡張
+1. **RAG 同期**: `checkins`, `interventions`, `behavior_events` から本文とメタデータを ETL し、Supabase Vector や AlloyDB Omni に embedding（例: text-embedding-3-large）を格納。`processIntervention` で最新チェックイン ID をもとに Top-K ドキュメントを検索し、LLM プロンプトへ `{context}` として注入。  
+2. **コンテキスト制御**: ユーザーの公開可能な情報のみをベクトル化し、PII は除去またはトークン化。LLM には「提供された context のみを引用」「不足時は fallback」を明示。  
+3. **Fine-tuning パイプライン**: `interventions` の高評価データセットを週次で抽出し（rating ≥4 かつ `use_fallback=false`）、Azure/OpenAI の fine-tuning API で小型モデルを学習。Edge Functions からは `llm_provider=finetuned` を選択できるようにし、応答品質とコストで使い分ける。  
+4. **ガードレールモデル**: Guardrail 用の小規模モデル（例: prompt classifier や toxicity detector）を Cloud Run Functions に配置し、LLM 応答前後で呼び出す。結果は `audit_log.guardrail_result` に保存し、トレーニング/モニタリングに活用。  
+5. **評価フレーム**: RAG/Fine-tuning の変更ごとに `metadata.json` の `llm_prompt_version`/`rag_version`/`finetune_model` を更新し、`behavior_events` にも適用バージョンを追記することで A/B や回帰を追跡可能にする。
 
 ## 9. 非機能要件
 | 項目 | 要件 |
