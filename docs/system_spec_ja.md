@@ -2,6 +2,7 @@
 
 ## 0. 背景
 - 既存の Web UI をベースに、ユーザーの回答を保存・分析しながら AI からのフィードバックが動的に変化する **プロトタイプ** を短期間で成立させる。
+- 同じアーキテクチャを基に、実際のユーザー回答を保存・分析しながら AI からのフィードバックを生成できる **プロダクション対応構成** へ段階的に拡張することを本仕様の最終目的とする。
 - 目標は「Big Five × 日次チェックイン × AI 介入」の一連フローを実ユーザーデータで動かし、運用手順と拡張余地を確認すること。定量 KPI は設定せず、レスポンス体感や安定性をオペレーターが確認する。
 - 基盤には Supabase（Auth + PostgreSQL + Edge Functions）を用い、フロントエンドは Cloud Run 上でホストする。介入生成に利用する LLM API はエンジニアが選定し、Structured Output/Moderation/フォールバックを実装可能なものを採用する。
 
@@ -121,7 +122,16 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 | Supabase | Auth、PostgreSQL、Edge Functions、Storage（将来のメディア用途）。 |
 | Google Cloud | Cloud Run（UI）、Secret Manager（API キー）、選定した LLM API への接続、Cloud Scheduler（定期 Worker 起動）、Slack Webhook（運用通知）。 |
 
-## 8. 非機能要件
+## 8. プロダクション対応への拡張指針
+| 項目 | 要件 |
+| --- | --- |
+| データ保存 | Supabase PostgreSQL スキーマは本番でも再利用できるよう追記専用・RLS を維持。`baseline_traits`/`checkins`/`interventions`/`behavior_events` をそのまま解析・再処理に活用できる。 |
+| AI 生成管制 | LLM API は Structured Output/Moderation を必須とし、Secret Manager + Edge Functions でキー・リトライを集中管理。Cloud Scheduler でジョブ再処理やキー切替も自動化できる。 |
+| 信頼性 | `intervention_jobs` + `processIntervention` でジョブ化し、冪等キーと再試行を保持。レスポンス ≤5 秒・成功率 ≥97% の SLO を Cloud Logging/Slack で監視。 |
+| 運用 | `audit_log` とメッセージ評価を手動レビューに使い、段階的に自動化比率を上げてもトレーサビリティを維持。 |
+| 追加施策 | 認証強化（MFA、IP 制限）、通知チャネル拡張、課金やPIIガバナンスを追加するだけで「ユーザー回答を保存・分析しつつ AI フィードバックを生成する」プロダクション対応構成へ移行可能。 |
+
+## 9. 非機能要件
 | 項目 | 要件 |
 | --- | --- |
 | レイテンシ | チェックイン送信からメッセージ表示まで平均 4 秒以内、p95 7 秒以内。 |
@@ -130,7 +140,7 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 | セキュリティ | Supabase Auth + HTTPS。Edge Functions には JWT 必須。LLM / Slack キーは Secret Manager 管理。 |
 | バックアップ | DB は Supabase PITR を有効化。`interventions` は 90 日でアーカイブ。 |
 
-## 9. オペレーション
+## 10. オペレーション
 1. **デプロイ**  
    - `npm run build` → Cloud Build → Cloud Run。  
    - Edge Functions は `supabase functions deploy`。  
@@ -140,7 +150,7 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 3. **サポート**  
    - パイロット参加者用に Slack/LINE グループを用意し、障害時は即時連絡。  
 
-## 10. ロードマップ（6 週間）
+## 11. ロードマップ（6 週間）
 1. Week1: Supabase プロジェクト初期化、Auth/Fn/DB スキーマ設計。
 2. Week2: TIPI API とホーム画面のデータ取得を実装、CI/CD 整備。
 3. Week3: チェックイン API + intervention_jobs → processIntervention Worker。
@@ -148,7 +158,7 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 5. Week5: QA（iOS/Android）・ロギング・観測性強化・小規模ドッグフーディング。
 6. Week6: パイロットローンチ、週次で利用者フィードバックをレビュー。
 
-## 11. リスクと対策
+## 12. リスクと対策
 | リスク | 対策 |
 | --- | --- |
 | LLM API 遅延/失敗 | タイムアウト＆テンプレート fallback、Queue 再試行（最大 3 回）、必要に応じて代替モデルへフェイルオーバー。 |
@@ -156,7 +166,7 @@ RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可と�
 | 個人情報保護 | 取得 PII をメールアドレスのみに限定。利用規約・プライポリを公開。 |
 | モバイル UX 破綻 | Storybook / Percy でビジュアルリグレッションテスト、主要端末で QA。 |
 
-## 12. 参考資料
+## 13. 参考資料
 - 旧仕様: `trait-flow-mvp/docs/prototype_spec_ja.md`
 - `trait-flow-mvp2.0/App.tsx`（UI 実装）
 - Supabase Edge Functions & Auth ドキュメント
