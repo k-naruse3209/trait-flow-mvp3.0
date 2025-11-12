@@ -1,139 +1,176 @@
-# Trait Flow AI Studio UI 仕様書（v2.0 フロントエンド）
+# Trait Flow v2.0 実運用仕様書
 
 ## 0. 背景
-- `trait_flow_screen_UI` として AI Studio で構築したモバイル向け UI を GitHub の `trait-flow-mvp2.0` リポジトリへ取り込み、日本語 UI として整備した。
-- 目的は **Big Five × 日次チェックイン × AI メッセージ** の価値を、バックエンドが未完成な段階でも検証できるプロトタイピング基盤を提供すること。
-- 主要ターゲットは日本語ユーザー（iOS/Android モバイルブラウザ）。Gemini API 連携は `services/aiService.ts` のモックを差し替えるだけで移行できる構成を採用。
+- 既存の AI Studio UI（React/Vite）をベースに、実際にユーザーの回答を保存・分析しながら AI からのフィードバックを生成できる **プロダクション対応構成** へ拡張する。
+- 目標は「Big Five × 日次チェックイン × AI 介入」を **最小限の SLO（レスポンス ≤5 秒、成功率 ≥97%）で提供**し、5〜10 名のクローズドパイロットを安定運用できるようにすること。
+- 基盤には Supabase（Auth + PostgreSQL + Edge Functions）を用い、Gemini 1.5 Flash を介入生成に採用する。Cloud Run 上でフロントエンドをホストし、Edge Functions を API ゲートウェイとして扱う。
 
-## 1. 検証仮説と成功指標
-- **検証仮説**
-  1. 完全日本語化されたオンボーディングと UI により、TIPI 診断の離脱率を 20% 以下に抑えられる。
-  2. Big Five スコアと直近チェックインを使った AI メッセージは、テンプレートのみの定型文よりも「役に立つ」と評価される。
-  3. Gemini API（もしくは他 LLM）を 1 リクエスト/日ペースで呼び出しても、ブラウザ単体で 5 秒以内にメッセージを提示できる。
-- **成功指標（ローンチ 2 週間）**
-  - ローンチ翌週のオンボーディング完了率 ≥ 80%。
-  - 日次チェックイン投稿者のうち 60% が 5 回以上レーティングを付与。
-  - 「今日のメッセージが役立った」評価（5 段階の 4 以上） ≥ 65%。
-  - Gemini API 呼び出し成功率 ≥ 97%、レスポンス中央値 < 5 秒。
+## 1. 検証仮説 & 成功指標
+- **仮説**
+  1. ユーザー固有の Big Five プロファイルと直近チェックインを組み合わせた Gemini 生成メッセージは、汎用テンプレートより 20%以上「役に立つ」評価を得る。
+  2. 1 回 1 分以内のチェックイン体験と即時フィードバックが、2 週間で 60% 以上の日次継続率を生む。
+  3. Supabase + Edge Functions + Google Cloud Run の構成で、端末 3G 回線でも 5 秒以内にフィードバックを表示できる。
+- **成功指標（2 週間）**
+  - オンボーディング完了率 ≥ 85%（TIPI 全 10 問回答）。
+  - 日次チェックイン継続率 ≥ 60%（登録ユーザーの 60% が 4 回以上投稿）。
+  - メッセージの 5 段階評価で 4 以上の割合 ≥ 65%。
+  - Gemini 呼び出し成功率 ≥ 97%、レスポンス中央値 < 4 秒。
 
 ## 2. スコープ
-### 実装済み機能
-- **ランディング & 認証プロンプト**：メール入力とパイロット参加 CTA を備えたヒーローセクション、マジックリンク型ログインの疑似画面。
-- **TIPI オンボーディング**：10 問を 2 ページで出題、7 段階スライダーで回答、平均化して特性スコアを算出しレーダーチャートに表示。
-- **ホーム / 今日のメッセージ**：あいさつ、AI 生成メッセージ、5 段階スター評価 UI、日次チェックイン CTA。
-- **チェックインモーダル**：気分スライダー（1〜5）、エネルギーレベル 3 つ、メモ（任意）、送信後に AI メッセージを生成。
-- **履歴画面**：チェックインタブとメッセージタブを切り替え、メッセージの詳細ドロワーも提供。
-- **設定画面**：アカウント情報、通知設定トグル、データ管理ショートカット、ログアウトボタンをモックで表示。
-- **開発者ナビ**：全画面へジャンプできるフローティングボタン（QA/デモ用途）。
-- **Docker / Cloud Run 対応**：Vite ビルド → Nginx 配信 → `start.sh` で `PORT` を環境変数から挿入。
+### 今回実装するもの
+| レイヤ | 内容 |
+| --- | --- |
+| フロント | 既存 React UI を日本語のまま利用。Auth/Auth 状態管理、API 呼び出し、リアルデータ表示のための改修を追加。 |
+| バックエンド | Supabase Auth, PostgreSQL スキーマ、Edge Functions 3 本（TIPI登録、チェックイン作成、介入生成）。 |
+| AI サービス | Gemini 1.5 Flash API（REST）。Structured Output で `{title, body, tone}` を取得。 |
+| 運用 | Cloud Run デプロイ、Supabase モニタリング、Slack 通知（失敗時）。 |
 
-### スコープ外（今後）
-- 今回の UI には永続化・Supabase 連携・実際のメール送信は含まれない。
-- Push 通知 / PWA インストール / 多言語サポート。
-- メトリクス管理画面、A/B テスト、Symanto API 等の高度な分析。
+### スコープ外
+ - Symanto / SNS 連携、Push 通知、ネイティブアプリ、A/B テスト、決済系。
 
-## 3. ユーザーフロー
-1. **ランディング**：パイロット案内 → メール入力 → 「参加を申し込む」で `/auth` へ遷移。
-2. **擬似ログイン**：メール入力 → マジックリンク送付を疑似表示 → 2 秒後にオンボーディングへ。
-3. **TIPI オンボーディング**：ようこそ画面 → ページングしながら 10 問回答 → スコア結果を確認 → ホームへ遷移。
-4. **ホーム**：
-   - 「今日のメッセージ」を閲覧し、スターで評価。
-   - 「今日のチェックイン」カードからモーダルを開く。
-   - チェックイン完了後は新しい AI メッセージがモーダル内に表示される。
-5. **履歴**：チェックイン / メッセージを切り替え、メッセージ詳細をドロワーで閲覧。
-6. **設定**：通知トグルやデータエクスポートなどの操作感を確認（現時点ではスタブ）。
+## 3. ユーザーフロー（実運用版）
+1. **アクセス & 認証**  
+   Cloud Run 上の UI へアクセス → Supabase Auth（メールリンク）でログイン。
+2. **TIPI オンボーディング**  
+   10 問回答 → `baseline_traits` へ保存 → Gemini なしの簡易スコア結果を即時表示。
+3. **ホーム**  
+   API から当日のメッセージを取得。未読なら「チェックインしてメッセージを受け取る」を促す。
+4. **チェックイン**  
+   気分/エネルギー/メモを入力 → `/functions/v1/checkins` へ送信 → DB 保存後、キュー `intervention_jobs` にメッセージ生成を投入。
+5. **AI メッセージ生成**  
+   Edge Function Worker がジョブを処理し Gemini を呼び出し → `interventions` に保存 → フロントは SSE/ポーリングで結果取得。
+6. **履歴 & フィードバック**  
+   メッセージカードを開き評価（1〜5）を送信 → `feedback_score` 更新。
 
-### 3.1 アーキテクチャ（React 単体構成）
+## 4. システム構成
 ```mermaid
 flowchart LR
-  subgraph Client[React 19 / Vite]
-    Landing --> Auth --> Onboarding --> AppLayout
-    AppLayout --> Home
-    AppLayout --> History
-    AppLayout --> Settings
+  subgraph Client[React / Cloud Run]
+    Landing --> Auth --> Onboarding --> App
+    App --> Home
+    App --> History
+    App --> Settings
     Home --> CheckinModal
     History --> MessageDrawer
   end
-  subgraph Services
-    AISvc[services/aiService.ts]
+
+  subgraph Supabase["Supabase Project"]
+    AuthSvc[Auth]
+    DB[(PostgreSQL)]
+    funcOnboard[Edge Fn: saveTipi]
+    funcCheckin[Edge Fn: createCheckin]
+    funcPoll[Edge Fn: fetchMessages]
+    funcWorker[Edge Fn: processIntervention]
+    Queue[(intervention_jobs)]
   end
 
-  CheckinModal --> AISvc
-  Home --> AISvc
+  subgraph Google["Google Cloud"]
+    Gemini[Gemini 1.5 Flash API]
+    Slack[Slack Webhook]
+  end
+
+  Client <--HTTP--> AuthSvc
+  Client <--JWT REST--> funcOnboard & funcCheckin & funcPoll
+  funcOnboard --> DB
+  funcCheckin --> DB
+  funcCheckin --> Queue
+  funcWorker --> Queue
+  funcWorker --> DB
+  funcWorker --> Gemini
+  funcWorker --> Slack
+  funcPoll --> DB
 ```
 
-## 4. 機能仕様（UI モジュール）
-- **UI-A: ランディング (`LandingPage`)**
-  - メール入力（`useState` で保持）と CTA ボタン。
-  - 主要価値訴求のリスト（FeatureListItem）3 つを表示。
-  - Tailwind CDN（`index.html`）ベースのグラデーション背景。
-- **UI-B: 認証モック (`AuthPage`)**
-  - メール入力、マジックリンク送信ボタン、送信中状態（2 秒後に `/app/onboarding`）。
-  - バックナビ（`aria-label="前の画面に戻る"`）。
-- **UI-C: オンボーディング (`OnboardingPage`)**
-  - ステップ `welcome → quiz → result` を `useState` で管理。
-  - `TIPI_QUESTIONS`（2 ページ × 5 問）を範囲スライダーで入力、ページごとに進捗バーを更新。
-  - スコア算出ロジック：反転項目は `8 - answer`、特性ごとに平均化。結果画面では `BigFiveRadarChart` とリスト解説。
-- **UI-D: ホーム (`HomePage`)**
-  - あいさつテキスト、`getPersonalizedMessage` で取得した当日メッセージ表示。
-  - スター評価 UI（現状はクリック時の状態保存なし、UI 表現のみ）。
-  - チェックイン CTA → `CheckinModal` を開く。`mockUserScores` と最新チェックインで AI メッセージを再生成。
-- **UI-E: チェックインモーダル (`CheckinModal`)**
-  - 気分スライダー、エネルギーボタン 3 種、任意メモ。
-  - 送信で `onSave` を呼び出し、`result` 状態では生成メッセージを提示し「閉じる」ボタンを表示。
-- **UI-F: 履歴 (`HistoryPage` + `MessageDetailDrawer`)**
-  - タブ切替（チェックイン / メッセージ）。
-  - 各カードに日付、気分、エネルギー、メモを表示。
-  - 「詳細を見る」でドロワーを右側からスライド表示し、基準特性・気分・エネルギーを確認。
-- **UI-G: 設定 (`SettingsPage`)**
-  - アカウント情報表示、通知設定トグル（CSS のみで動作）、データ管理ボタン、ログアウトボタンをモック実装。
-- **UI-H: レイアウト (`AppLayout`, `AppHeader`, `BottomNav`, `DevNav`)**
-  - HashRouter + `<Outlet>` 構成。`/app/onboarding` ではヘッダー/ボトムナビを非表示。
-  - `DevNav` ボタンで任意の画面へジャンプ。
-- **Service-S: AI メッセージ (`services/aiService.ts`)**
-  - 現状は Promise で 800ms 遅延後、Big Five の最上位特性に紐づく定型文を返す。
-  - 将来的に Gemini などの LLM 呼び出しへ差し替え。`PersonalizedMessage` 形式（`id`, `date`, `text`, `personalizationInfo`）で返却する。
+## 5. 機能仕様
+### 5.1 フロントエンド（主要コンポーネント）
+- **Auth Gate**：Supabase Auth UI をラップし、JWT を取得。React Query で認証状態を管理。
+- **TIPI Form (`OnboardingPage`)**  
+  - API: `POST /functions/v1/tipi`  
+  - Payload: `{ answers: Record<id, 1-7> }`  
+  - Response: `{ scores: BigFiveScores }`  
+  - 保存完了後、結果画面を表示し `/app/home` へ遷移。
+- **Home**  
+  - API: `GET /functions/v1/messages/today`  
+  - レスポンスが `status: generating` ならローディングを表示、`completed` なら本文と評価 UI を出す。
+- **CheckinModal**  
+  - API: `POST /functions/v1/checkins`  
+  - サーバーが 202 を返したらローディング状態に切り替え、`GET /functions/v1/messages/latest?checkin_id=` で 5 秒間隔のポーリング。
+- **History**  
+  - API: `GET /functions/v1/history?limit=20&cursor=...`  
+  - メッセージ詳細で `PATCH /functions/v1/messages/{id}` を呼び、`feedback_score` を更新。
 
-## 5. データモデル / 型
-| 型 | 説明 |
+### 5.2 Edge Functions
+| 関数 | 説明 |
 | --- | --- |
-| `BigFiveTrait` | `"Extraversion" | "Agreeableness" | …` の列挙。`BIG_FIVE_TRAIT_LABELS` で日本語ラベルに変換。 |
-| `BigFiveScores` | キーを `BigFiveTrait` とする数値マップ（0〜7）。`mockUserScores` でサンプル値を保持。 |
-| `TIPIQuestion` | `{ id, text, trait, isReversed }`。`constants.ts` で日本語文面を管理。 |
-| `Checkin` | `{ id, date, mood:1-5, energy:'low'|'medium'|'high', note? }`。`mockCheckinHistory` でダミーデータ。 |
-| `PersonalizedMessage` | `{ id, date, text, rating?, personalizationInfo:{ baseTrait, mood, energy } }`。 |
+| `saveTipi` | TIPI 回答を受け取り、Big Five スコアを算出して `baseline_traits` に UPSERT。 |
+| `createCheckin` | チェックインを `checkins` に保存、`intervention_jobs` にジョブを enqueue、HTTP 202 を返す。 |
+| `fetchMessages` | 今日のメッセージ / 履歴 / 評価更新を扱う REST エンドポイント集合。 |
+| `processIntervention` | キューからジョブ取得 → Gemini 呼び出し → `interventions` へ保存 → Slack へ失敗通知。 |
 
-現状はすべてフロントエンドメモリ上で扱い、永続化は未実装。将来的に API へ送る際もこの型をそのまま利用する想定。
+### 5.3 Gemini 呼び出し仕様
+- **モデル**: `gemini-1.5-flash`  
+- **入力**:  
+  - 上位/下位各 1 特性（数値）  
+  - 直近 3 回の気分平均、最新チェックイン詳細  
+  - ユーザーの週次目標（任意フィールド）  
+- **プロンプトテンプレート**: JSON 形式で `title`（20 文字）、`body`（200 文字以内）、`tone`（`reflective | actionable | compassionate`）。  
+- **タイムアウト**: 4 秒。失敗時はテンプレート文を使用し `interventions.use_fallback = true`。
 
-## 6. 外部サービス / 依存
-- **LLM**：現時点ではスタブだが、`services/aiService.ts` を Gemini API へ差し替えることで本番化できる。必要な入力は Big Five スコアと直近チェックイン。
-- **Tailwind CDN**：`index.html` で `https://cdn.tailwindcss.com` を読み込み、テーマカラーをカスタム。
-- **アイコン**：ヒーロー・ナビの SVG はローカルに定義。外部アセット依存なし。
-- **ビルド/配信**：Node.js 18+ / Vite 6 / React 19。Dockerfile は `node:20-alpine` → `nginx:1.27-alpine` の 2 ステージ。
+## 6. データモデル
+| テーブル | 主な列 |
+| --- | --- |
+| `users` | `id`, `email`, `created_at` |
+| `baseline_traits` | `user_id`, `traits_avg` (JSON), `instrument`, `administered_at` |
+| `checkins` | `id`, `user_id`, `mood_score`, `energy_level`, `note`, `created_at` |
+| `intervention_jobs` | `id`, `user_id`, `checkin_id`, `status`, `attempts`, `payload`, `created_at` |
+| `interventions` | `id`, `user_id`, `checkin_id`, `title`, `body`, `tone`, `feedback_score`, `use_fallback`, `created_at` |
+| `user_settings` | `user_id`, `notification_channel`, `quiet_hours`, `weekly_goal`, `updated_at` |
 
-## 7. 非機能要件
-- **パフォーマンス**：モバイル端末でも 60fps を維持できる軽量 UI（ページごとのコンポーネント分割、必要最小限の状態）。
-- **アクセシビリティ**：主要ボタンに `aria-label` を設定。テキストは全て日本語。
-- **ビルド/テスト**：`npm run build` で 30ms 程度。ユニットテストは未整備（今後 Vite + Vitest を導入予定）。
-- **デプロイ**：Cloud Run で `PORT` を渡すだけで起動。`start.sh` が `envsubst` で Nginx 設定を書き換える。
+RLS（Row Level Security）で `user_id = auth.uid()` の行のみ CRUD 可とする。
 
-## 8. ロードマップ（想定 6 週）
-1. **Week 1**: Gemini API 接続、`.env` 管理、LLM 応答エラーハンドリング。
-2. **Week 2**: Supabase（または Firebase）とのセッション/データ保存を実装。
-3. **Week 3**: メッセージ評価やチェックイン履歴を API と同期。Analytics（GA4 or Supabase Insights）導入。
-4. **Week 4**: 通知設定トグルをバックエンドへ連携、メール/LINE/Push リマインダーの PoC。
-5. **Week 5**: QA（iOS/Android） & ローカリゼーション微調整、UI ポリッシュ。
-6. **Week 6**: クローズドパイロット（5〜10 名）開始、定性フィードバック収集。
+## 7. 外部サービス & 依存関係
+- **Supabase**：Auth、PostgreSQL、Edge Functions、Storage（将来のメディア用途）。
+- **Google Cloud**：Cloud Run（UI）、Secret Manager（API キー）、Gemini API、Cloud Scheduler（定期 Worker 起動）、Slack Webhook（運用通知）。
+- **npm 依存**：React 19, React Router 7, React Query, Supabase JS, Tailwind（CDN）, Recharts, Vite 6。
 
-## 9. リスクとフォロー
-- **データ未保存**：現状は全てモックのため、ユーザーが入力した内容はリロードで消える → バックエンド接続までにストレージ戦略（Supabase or LocalStorage）を決定。
-- **LLM レイテンシ**：API 遅延時のローディング表示はあるが、タイムアウトやリトライは未実装 → `AbortController` とフォールバック文の導入が必要。
-- **多端末テスト不足**：レスポンシブ設計はモバイル最適化だが、タブレット/PC の QA が未実施 → Tailwind ブレークポイントの検証が必要。
-- **セキュリティ**：現行はフロントエンドのみで、API キーをブラウザに持たせられない → 本番前にサーバー側プロキシを必須とする。
+## 8. 非機能要件
+| 項目 | 要件 |
+| --- | --- |
+| レイテンシ | チェックイン送信からメッセージ表示まで平均 4 秒以内、p95 7 秒以内。 |
+| 可用性 | UI/Edge Functions の稼働率 99%（Cloud Run / Supabase SLA）。 |
+| 監視 | Supabase Logs + Cloud Logging。失敗時 Slack 通知。Gemini 使用量を日次エクスポート。 |
+| セキュリティ | Supabase Auth + HTTPS。Edge Functions には JWT 必須。Gemini / Slack キーは Secret Manager 管理。 |
+| バックアップ | DB は Supabase PITR を有効化。`interventions` は 90 日でアーカイブ。 |
 
-## 10. 参考資料
-- `trait-flow-mvp/docs/prototype_spec_ja.md`（初期仕様書）
-- `trait-flow-mvp2.0/README.md`（実行・デプロイ手順）
-- `trait-flow-mvp2.0/App.tsx`, `components/`, `services/aiService.ts`（主要ロジック）
-- Google TIPI (Gosling et al. 2003)
-- Google Cloud Run / Vite / React Router 公式ドキュメント
+## 9. オペレーション
+1. **デプロイ**  
+   - `npm run build` → Cloud Build → Cloud Run。  
+   - Edge Functions は `supabase functions deploy`。  
+2. **ランブック**  
+   - Edge Function 5xx 増加 → Slack アラート → Cloud Logging で原因特定 → 必要ならキューを手動リプレイ。  
+   - Gemini 限度超過 → Secret Manager でキー切替 or プラン変更。  
+3. **サポート**  
+   - パイロット参加者用に Slack/LINE グループを用意し、障害時は即時連絡。  
+
+## 10. ロードマップ（6 週間）
+1. Week1: Supabase プロジェクト初期化、Auth/Fn/DB スキーマ設計。
+2. Week2: TIPI API とホーム画面のデータ取得を実装、CI/CD 整備。
+3. Week3: チェックイン API + intervention_jobs → processIntervention Worker。
+4. Week4: Gemini 連携、エラーハンドリング、Slack 通知。
+5. Week5: QA（iOS/Android）・ロギング・観測性強化・小規模ドッグフーディング。
+6. Week6: パイロットローンチ、週次で KPI/Feedback をレビュー。
+
+## 11. リスクと対策
+| リスク | 対策 |
+| --- | --- |
+| Gemini API 遅延 | タイムアウト＆テンプレート fallback、Queue 再試行（最大 3 回）。 |
+| Supabase 障害 | Cloud Run 停止＆Slack 通知。緊急時はローカルテンプレートでオフラインモードを提供。 |
+| 個人情報保護 | 取得 PII をメールアドレスのみに限定。利用規約・プライポリを公開。 |
+| モバイル UX 破綻 | Storybook / Percy でビジュアルリグレッションテスト、主要端末で QA。 |
+
+## 12. 参考資料
+- 旧仕様: `trait-flow-mvp/docs/prototype_spec_ja.md`
+- `trait-flow-mvp2.0/App.tsx`（UI 実装）
+- Supabase Edge Functions & Auth ドキュメント
+- Google Gemini API ドキュメント
+- Cloud Run / Cloud Build / Secret Manager ベストプラクティス
