@@ -38,7 +38,7 @@
    メッセージカードを開き評価（1〜5）を送信 → `feedback_score` 更新。
 
 ## 4. システム構成
-```mermaid` 
+```mermaid
 flowchart LR
   subgraph Client[React / Cloud Run]
     Landing --> Auth --> Onboarding --> App
@@ -95,17 +95,13 @@ flowchart LR
 | `processIntervention` | キューからジョブ取得 → 選定した LLM API を呼び出し → `interventions` へ保存 → Slack へ失敗通知。 |
 
 ### 5.3 LLM 呼び出し仕様
-- **モデル選定**: エンジニアがレスポンス速度・コスト・日本語出力品質に基づき選択（例: Gemini 1.5 Flash, OpenAI Responses, Claude Haiku など）。  
-- **必須要件**:  
-  - Structured Output で `{title, body, tone}` を返せる（JSON Schema or function call）。  
-  - Moderation/安全制御 API、もしくは同等のコンテンツフィルタを適用できる。  
-  - 4 秒以内に応答できるレイテンシ特性（プロトタイプ目安）。  
-- **入力**:  
-  - 上位/下位各 1 特性（数値）  
-  - 直近 3 回の気分平均、最新チェックイン詳細  
-  - ユーザーの週次目標（任意フィールド）  
-- **アウトプット要件**: `title`（20 文字）、`body`（200 文字以内）、`tone`（`reflective | actionable | compassionate`）。  
-- **フォールバック**: タイムアウト/エラー時はテンプレート文を使用し `interventions.use_fallback = true`。LLM 切替・再試行ポリシーは I モジュール（信頼性）で管理する。
+| 項目 | 内容 |
+| --- | --- |
+| モデル選定 | エンジニアがレスポンス速度・コスト・日本語出力品質を基準に選択（例: Gemini 1.5 Flash, OpenAI Responses, Claude Haiku など）。 |
+| 必須要件 | Structured Output で `{title, body, tone}` を返却できること／Moderation など安全制御を適用できること／平均 4 秒以内で応答できること。 |
+| 入力 | 上位/下位特性（各 1）、直近 3 回の気分平均、最新チェックイン詳細、ユーザー週次目標（任意）。 |
+| 出力 | `title`（20 文字）、`body`（200 文字以内）、`tone`（`reflective | actionable | compassionate`）。 |
+| フォールバック | タイムアウト・エラー時はテンプレート文を使用し `interventions.use_fallback = true`。LLM 切替や再試行は I モジュールで制御。 |
 
 ## 6. データモデル
 | テーブル | 主な列 |
