@@ -17,9 +17,9 @@
 | レイヤ | 内容 |
 | --- | --- |
 | フロント | 既存 UI を日本語のまま利用。Auth/Auth 状態管理、API 呼び出し、リアルデータ表示のための改修を追加。 |
-| バックエンド | Supabase Auth, PostgreSQL スキーマ、Edge Functions 3 本（TIPI登録、チェックイン作成、介入生成）。 |
-| AI サービス | エンジニアが選定する LLM API（REST/Responses 互換）。Structured Output で `{title, body, tone}` を取得できること。 |
-| 運用 | Cloud Run デプロイ、Supabase モニタリング、Slack 通知（失敗時）。 |
+| バックエンド | Supabase Auth / PostgreSQL（pgvector）＋ Edge Functions。新規 Orchestrator（FastAPI + LangGraph + LlamaIndex）を追加し `/api/memory/update` `/api/respond` を提供。 |
+| AI サービス | LLM: OpenAI Responses / Realtime。RAG: LlamaIndex + pgvector。再ランク: Cohere Rerank v2。 |
+| 運用 | Cloud Run デプロイ、Supabase モニタリング、n8n で CRM/通知、Slack 通知（失敗時）。 |
 
 ### スコープ外
  - Symanto / SNS 連携、Push 通知、ネイティブアプリ、A/B テスト、決済系。
@@ -41,41 +41,49 @@
 ## 4. システム構成
 ```mermaid
 flowchart LR
-  subgraph Client[Web Client / Cloud Run]
-    Landing --> Auth --> Onboarding --> App
-    App --> Home
-    App --> History
-    App --> Settings
-    Home --> CheckinModal
-    History --> MessageDrawer
+  subgraph FE[Web UI (Vite/TS)]
+    U[User]
+  end
+  subgraph Edge[Supabase / Edge Functions]
+    AuthSvc[Supabase Auth]
+    Tips[saveTipi]
+    Check[createCheckin]
+    Poll[fetchMessages]
+  end
+  subgraph ORC[Orchestrator (FastAPI + LangGraph)]
+    API1[/api/memory/update]
+    API2[/api/respond]
+  end
+  subgraph DB[(Cloud SQL Postgres + pgvector)]
+    Baseline[(baseline\_traits)]
+    Checkins[(checkins)]
+    Memories[(memories)]
+    UserMem[(user\_memory)]
+    Events[(behavior\_events)]
+    Audit[(audit\_log)]
+  end
+  subgraph RAG[RAG / ML]
+    Vec[pgvector KNN]
+    Rerank[Cohere Rerank v2]
+    LLM[OpenAI Responses / Realtime]
+  end
+  subgraph Ops[External]
+    Slack[Slack]
+    N8N[n8n Webhook]
   end
 
-  subgraph Supabase["Supabase Project"]
-    AuthSvc[Auth]
-    DB[(PostgreSQL)]
-    funcOnboard[Edge Fn: saveTipi]
-    funcCheckin[Edge Fn: createCheckin]
-    funcPoll[Edge Fn: fetchMessages]
-    funcWorker[Edge Fn: processIntervention]
-    Queue[(intervention_jobs)]
-  end
-
-  subgraph Google["Google Cloud"]
-    LLM[LLM API - engineer-selected]
-    Slack[Slack Webhook]
-  end
-
-  Client <--HTTP--> AuthSvc
-  Client <--JWT REST--> funcOnboard & funcCheckin & funcPoll
-  funcOnboard --> DB
-  funcCheckin --> DB
-  funcCheckin --> Queue
-  funcWorker --> Queue
-  funcWorker --> DB
-  funcWorker --> LLM
-  funcWorker --> Slack
-  funcPoll --> DB
+  U --> FE --> Edge
+  Edge --> DB
+  Edge --> ORC
+  ORC --> Vec --> DB
+  ORC --> Rerank --> ORC --> LLM
+  ORC --> Slack
+  ORC <-->|Webhook| N8N
+  ORC --> Events
+  ORC --> Audit
 ```
+
+Orchestrator の詳細なフロー・API・デプロイ手順は `docs/orchestrator_spec.md` を参照。
 
 ## 5. 機能仕様
 ### 5.1 フロントエンド（主要コンポーネント）
@@ -87,15 +95,20 @@ flowchart LR
 | CheckinModal | `POST /functions/v1/checkins` を送信し HTTP 202 を受領後、`GET /functions/v1/messages/latest?checkin_id=` を 5 秒間隔でポーリング。 |
 | History | `GET /functions/v1/history?limit=20&cursor=...` で一覧取得。詳細で `PATCH /functions/v1/messages/{id}` を呼び `feedback_score` を更新。 |
 
-### 5.2 Edge Functions
+### 5.2 Orchestrator API（FastAPI + LangGraph）
+- `/api/memory/update`: `{ user_id, text, kind }` を受け取り、OpenAI Embedding でベクトル化 → `memories` へ INSERT → `user_memory.long_term` を EMA 更新 → `policy` ベクトルを更新。  
+- `/api/respond`: `{ user_id, query }` を受け取り、pgvector KNN (top=200) → Cohere Rerank (top=8) → OpenAI Responses（system に個人化方針を挿入）で応答。  
+- LangGraph の State/Node/Edge で短期・長期・方針を保持し、RAG フローを再利用可能なグラフとして実装する。詳細は `docs/orchestrator_spec.md` を参照。
+
+### 5.3 Edge Functions
 | 関数 | 説明 |
 | --- | --- |
 | `saveTipi` | TIPI 回答を受け取り、Big Five スコアを算出して `baseline_traits` に UPSERT。 |
-| `createCheckin` | チェックインを `checkins` に保存、`intervention_jobs` にジョブを enqueue、HTTP 202 を返す。 |
+| `createCheckin` | チェックインを `checkins` に保存、`intervention_jobs` にジョブを enqueue、HTTP 202 を返す。Orchestrator と連携する場合は `/api/memory/update` を呼ぶトリガー。 |
 | `fetchMessages` | 今日のメッセージ / 履歴 / 評価更新を扱う REST エンドポイント集合。 |
-| `processIntervention` | キューからジョブ取得 → 選定した LLM API を呼び出し → `interventions` へ保存 → Slack へ失敗通知。 |
+| `processIntervention` | レガシーフロー互換のため保持。Orchestrator 移行後は監査・バックフィル用に限定利用。 |
 
-### 5.3 LLM 呼び出し仕様
+### 5.4 LLM 呼び出し仕様
 | 項目 | 内容 |
 | --- | --- |
 | モデル選定 | エンジニアがレスポンス速度・コスト・日本語出力品質を基準に選択（例: Gemini 1.5 Flash, OpenAI Responses, Claude Haiku など）。 |
@@ -110,6 +123,8 @@ flowchart LR
 | `users` | `id`, `email`, `created_at` |
 | `baseline_traits` | `user_id`, `traits_avg` (JSON), `instrument`, `administered_at` |
 | `checkins` | `id`, `user_id`, `mood_score`, `energy_level`, `note`, `created_at` |
+| `user_memory` | `user_id`, `long_term` (vector), `policy` (vector), `last_updated` |
+| `memories` | `id`, `user_id`, `kind`, `embedding` (vector), `text`, `created_at` |
 | `intervention_jobs` | `id`, `user_id`, `checkin_id`, `status`, `attempts`, `payload`, `created_at` |
 | `interventions` | `id`, `user_id`, `checkin_id`, `title`, `body`, `tone`, `feedback_score`, `use_fallback`, `created_at` |
 | `user_settings` | `user_id`, `notification_channel`, `quiet_hours`, `weekly_goal`, `updated_at` |
@@ -348,3 +363,4 @@ sequenceDiagram
 - Supabase Edge Functions & Auth ドキュメント
 - LLM API ドキュメント（例: Google Gemini API）
 - Cloud Run / Cloud Build / Secret Manager ベストプラクティス
+- Orchestrator 詳細: `docs/orchestrator_spec.md`

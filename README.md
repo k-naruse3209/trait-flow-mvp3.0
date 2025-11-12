@@ -4,7 +4,8 @@
 
 # Trait Flow v2.0 プロトタイプ — 実行とデプロイ
 
-このリポジトリは Trait Flow v2.0 の Web UI プロトタイプを含みます。ユーザーの TIPI 回答や日次チェックインを受け付け、AI 介入カードを表示するフローをローカル/Cloud Run で検証できます。システム全体の要件は `docs/system_spec_ja.md` を参照してください。
+このリポジトリは Trait Flow v2.0 の Web UI プロトタイプを含みます。ユーザーの TIPI 回答や日次チェックインを受け付け、AI 介入カードを表示するフローをローカル/Cloud Run で検証できます。  
+**重要**: 実際の個人化応答は Python 製 Orchestrator（FastAPI + LangGraph + LlamaIndex + pgvector + Cohere Rerank + OpenAI Responses）で実装します。設計詳細は `docs/orchestrator_spec.md` を参照し、UI とは `/api/memory/update` と `/api/respond` で連携してください。
 
 ## ローカルでの実行方法
 
@@ -59,4 +60,10 @@
 
 ## ドキュメント
 - システム仕様: `docs/system_spec_ja.md`
+- Orchestrator 基本設計: `docs/orchestrator_spec.md`
 - メタデータ: `metadata.json`
+
+## Orchestrator (FastAPI) について
+- 別サービスとして `app/main.py`（FastAPI + LangGraph）を用意し、README 冒頭の設計どおり `/api/memory/update` と `/api/respond` を提供します。
+- 推奨デプロイ: Cloud Run（Dockerfile 例は `docs/orchestrator_spec.md` 参照）、DB は Cloud SQL for Postgres + pgvector。  
+- UI からの `fetch('/api/...')` はこの Orchestrator の URL (CORS 許可済み) に向けてください。
