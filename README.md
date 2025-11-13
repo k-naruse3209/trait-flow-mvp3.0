@@ -2,10 +2,10 @@
 <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Trait Flow v2.0 プロトタイプ — 実行とデプロイ
+# Trait Flow v3.0 プロトタイプ — 実行とデプロイ
 
-このリポジトリは Trait Flow v2.0 の Web UI プロトタイプを含みます。ユーザーの TIPI 回答や日次チェックインを受け付け、AI 介入カードを表示するフローをローカル/Cloud Run で検証できます。  
-**重要**: 実際の個人化応答は Python 製 Orchestrator（FastAPI + LangGraph + LlamaIndex + pgvector + Cohere Rerank + OpenAI Responses）で実装します。設計詳細は `docs/orchestrator_spec.md` を参照し、UI とは `/api/memory/update` と `/api/respond` で連携してください。
+このリポジトリ（`k-naruse3209/trait-flow-mvp3.0`）は v2 系の UI 実装を引き継ぎつつ、LangGraph Orchestrator 連携や本番データモデルを反映させた v3.0 向けの最新ドキュメントと設定を管理します。ユーザーの TIPI 回答や日次チェックインを受け付け、AI 介入カードを表示するフローをローカル/Cloud Run で検証できます。  
+**重要**: 実際の個人化応答は Python 製 Orchestrator（FastAPI + LangGraph + LlamaIndex + pgvector + Cohere Rerank + OpenAI Responses）で実装します。設計詳細は `docs/orchestrator_spec.md` を参照し、UI とは `/api/memory/update` と `/api/respond` で連携してください。GitHub のデフォルトブランチは `main` です。
 
 ## ローカルでの実行方法
 
