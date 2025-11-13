@@ -41,28 +41,28 @@
 ## 4. システム構成
 ```mermaid
 flowchart LR
-  subgraph FE[Web UI (Vite/TS)]
+  subgraph FE["Web UI (Vite/TS)"]
     U[User]
   end
-  subgraph Edge[Supabase / Edge Functions]
+  subgraph Edge["Supabase / Edge Functions"]
     AuthSvc[Supabase Auth]
     Tips[saveTipi]
     Check[createCheckin]
     Poll[fetchMessages]
   end
-  subgraph ORC[Orchestrator (FastAPI + LangGraph)]
-    API1[/api/memory/update]
-    API2[/api/respond]
+  subgraph ORC["Orchestrator (FastAPI + LangGraph)"]
+    API1["/api/memory/update"]
+    API2["/api/respond"]
   end
-  subgraph DB[(Cloud SQL Postgres + pgvector)]
-    Baseline[(baseline\_traits)]
+  subgraph DB["Cloud SQL Postgres + pgvector"]
+    Baseline[(baseline_traits)]
     Checkins[(checkins)]
     Memories[(memories)]
-    UserMem[(user\_memory)]
-    Events[(behavior\_events)]
-    Audit[(audit\_log)]
+    UserMem[(user_memory)]
+    Events[(behavior_events)]
+    Audit[(audit_log)]
   end
-  subgraph RAG[RAG / ML]
+  subgraph RAG["RAG / ML"]
     Vec[pgvector KNN]
     Rerank[Cohere Rerank v2]
     LLM[OpenAI Responses / Realtime]
