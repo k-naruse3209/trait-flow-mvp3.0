@@ -10,20 +10,20 @@ UI（`trait-flow-mvp2.0`）は既存の Vite/TS 構成を維持しつつ、以�
 ## 2. アーキテクチャ（最小）
 ```mermaid
 flowchart LR
-  subgraph FE[trait-flow-mvp2.0 (Vite/TS)]
+  subgraph FE["trait-flow-mvp2.0 (Vite/TS)"]
     U[User]
   end
-  U -->|/api/respond, /api/memory/update| ORC[(Orchestrator: FastAPI + LangGraph)]
-  subgraph DB[(Postgres + pgvector)]
-    MEM[memories (KNN)]
-    UM[user_memory (long_term/policy)]
+  U -->|"/api/respond, /api/memory/update"| ORC["Orchestrator: FastAPI + LangGraph"]
+  subgraph DB["Postgres + pgvector"]
+    MEM["memories (KNN)"]
+    UM["user_memory (long_term/policy)"]
   end
   ORC -->|KNN| MEM
-  ORC -->|long_term/方針更新| UM
+  ORC -->|"long_term/方針更新"| UM
   ORC -->|Rerank| RR[Cohere Rerank v2]
   RR --> ORC --> LLM[OpenAI Responses / Realtime]
   ORC --> OBS[Logs / Metrics / Traces]
-  ORC <-->|Webhook| N8N[n8n: CRM/通知/シート]
+  ORC <-->|Webhook| N8N["n8n: CRM/通知/シート"]
 ```
 
 ### シーケンス（質問→応答）
