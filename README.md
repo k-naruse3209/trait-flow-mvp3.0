@@ -4,7 +4,7 @@
 
 # Trait Flow v3.0 プロトタイプ — 実行とデプロイ
 
-このリポジトリ（`k-naruse3209/trait-flow-mvp3.0`）は v2 系の UI 実装を引き継ぎつつ、LangGraph Orchestrator 連携や本番データモデルを反映させた v3.0 向けの最新ドキュメントと設定を管理します。ユーザーの TIPI 回答や日次チェックインを受け付け、AI 介入カードを表示するフローをローカル/Cloud Run で検証できます。  
+このリポジトリ（`k-naruse3209/trait-flow-mvp3.0`）は v2 系の UI 実装を引き継ぎつつ、LangGraph Orchestrator 連携や本番データモデルを反映させた v3.0 向けの最新ドキュメントと設定を管理します。ユーザーの TIPI 回答や日次チェックインを受け付け、AI 介入カードを表示するフローをローカル/AWS（S3 + CloudFront または App Runner）で検証できます。  
 **重要**: 実際の個人化応答は Python 製 Orchestrator（FastAPI + LangGraph + LlamaIndex + pgvector + Cohere Rerank + OpenAI Responses）で実装します。設計詳細は `docs/orchestrator_spec.md` を参照し、UI とは `/api/memory/update` と `/api/respond` で連携してください。GitHub のデフォルトブランチは `main` です。
 
 ## ローカルでの実行方法
@@ -18,45 +18,51 @@
 3. 開発サーバーを起動  
    `npm run dev`
 
-## Google Cloud Run へのデプロイ
+## AWS へのデプロイ
 
-このリポジトリには、本番運用を想定した Dockerfile が含まれており、Vite でビルドした成果物を Nginx で配信する構成になっています。以下の手順で Cloud Run へデプロイできます。
+UI はビルド済みの静的アセットなので、AWS では以下 2 パターンのいずれかで運用できます。
 
-1. **認証とプロジェクトの指定**
+### オプション A: S3 + CloudFront （静的ホスティング）
+1. **ビルド**
    ```bash
-   gcloud auth login
-   gcloud config set project YOUR_PROJECT_ID
+   npm run build
+   ```
+2. **S3 バケット（静的サイト）を用意**  
+   - バケットを作成し「静的ウェブサイトホスティング」を有効化。  
+   - `dist/` を `aws s3 sync dist/ s3://YOUR_BUCKET --delete` で反映。
+3. **CloudFront ディストリビューションを紐付け**  
+   - オリジンに S3 静的エンドポイントを指定。  
+   - `index.html` をデフォルトルートに設定し、必要なら OAC / OAI を構成。
+4. **デプロイ後のキャッシュ無効化（任意）**
+   ```bash
+   aws cloudfront create-invalidation --distribution-id DIST_ID --paths "/*"
    ```
 
-2. **必要なサービスの有効化（初回のみ）**
-   ```bash
-   gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
-   ```
+### オプション B: AWS App Runner / ECS Fargate（Nginx + Docker）
+このリポジトリには Dockerfile があり、`start.sh` が `$PORT` を読み取って Nginx を起動します。Cloud Run と同じコンテナを App Runner もしくは ECS Fargate に配置できます。
 
-3. **コンテナイメージのビルドとプッシュ**  
-   Cloud Run では `PORT` 環境変数で渡されるポートで待ち受ける必要があります。`start.sh` と `nginx.conf.template` が自動で対応します。
+1. **ECR にリポジトリを作成し、イメージをプッシュ**
    ```bash
-   gcloud builds submit --tag REGION-docker.pkg.dev/YOUR_PROJECT_ID/trait-flow/trait-flow-ui
-   ```
-   - `REGION` は利用可能な Artifact Registry のリージョン（例: `asia-northeast1`）に置き換えてください。
-   - 初回実行時は `trait-flow` というリポジトリが自動作成されます。
-
-4. **Cloud Run へデプロイ**
-   ```bash
-   gcloud run deploy trait-flow-ui \
-     --image REGION-docker.pkg.dev/YOUR_PROJECT_ID/trait-flow/trait-flow-ui \
-     --platform managed \
-     --region REGION \
-     --allow-unauthenticated
-   ```
-   数十秒待つと Cloud Run からサービス URL が表示されます。アプリは静的サイトなので、実行時に追加の環境変数を設定する必要はありません（必要ならビルド時に `.env.local` を反映させます）。
-
-5. **（任意）Docker でローカル確認**
-   ```bash
+   aws ecr create-repository --repository-name trait-flow-ui
+   aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com
    docker build -t trait-flow-ui .
-   docker run -p 8080:8080 trait-flow-ui
+   docker tag trait-flow-ui:latest ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/trait-flow-ui:latest
+   docker push ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/trait-flow-ui:latest
    ```
-   http://localhost:8080 にアクセスして、デプロイ前に挙動を確認できます。
+2. **App Runner にサービスを作成**（例）
+   ```bash
+   aws apprunner create-service \
+     --service-name trait-flow-ui \
+     --source-configuration ImageRepository="{ImageIdentifier=ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/trait-flow-ui:latest,ImageRepositoryType=ECR}" \
+     --instance-configuration Cpu=1 vCpu,Memory=2 GB \
+     --auto-scaling-configuration Arn=arn:aws:apprunner:...:auto-scaling-configuration/DefaultConfiguration/1 \
+     --health-check-configuration Protocol=HTTP,Path=/,Interval=10,Timeout=5,HealthyThreshold=1,UnhealthyThreshold=5
+   ```
+   - ECS/Fargate の場合はタスク定義で同じイメージを指定し、ALB 経由で公開します。
+3. **環境変数**  
+   - 静的サイトのため必須のランタイム変数はありません。ビルド時に `.env.local` を注入する場合は `npm run build` 前に設定してください。
+
+どちらのオプションでも HTTPS/カスタムドメインは ACM（証明書）+ CloudFront / ALB で終端します。
 
 ## ドキュメント
 - システム仕様: `docs/system_spec_ja.md`
@@ -65,5 +71,5 @@
 
 ## Orchestrator (FastAPI) について
 - 別サービスとして `app/main.py`（FastAPI + LangGraph）を用意し、README 冒頭の設計どおり `/api/memory/update` と `/api/respond` を提供します。
-- 推奨デプロイ: Cloud Run（Dockerfile 例は `docs/orchestrator_spec.md` 参照）、DB は Cloud SQL for Postgres + pgvector。  
+- 推奨デプロイ: AWS App Runner / ECS Fargate（Dockerfile 例は `docs/orchestrator_spec.md` 参照）、DB は Amazon Aurora PostgreSQL + pgvector 拡張や Supabase Managed Postgres など。  
 - UI からの `fetch('/api/...')` はこの Orchestrator の URL (CORS 許可済み) に向けてください。
