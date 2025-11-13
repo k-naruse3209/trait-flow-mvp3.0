@@ -39,7 +39,7 @@ UI はビルド済みの静的アセットなので、AWS では以下 2 パタ�
    ```
 
 ### オプション B: AWS App Runner / ECS Fargate（Nginx + Docker）
-このリポジトリには Dockerfile があり、`start.sh` が `$PORT` を読み取って Nginx を起動します。Cloud Run と同じコンテナを App Runner もしくは ECS Fargate に配置できます。
+このリポジトリには Dockerfile があり、`start.sh` が `$PORT` を読み取って Nginx を起動します。同じコンテナを AWS App Runner もしくは ECS Fargate に配置できます。
 
 1. **ECR にリポジトリを作成し、イメージをプッシュ**
    ```bash

@@ -4,8 +4,8 @@ UI（`trait-flow-mvp2.0`）は既存の Vite/TS 構成を維持しつつ、以�
 
 ## 1. 結論・前提・コスト感
 - **結論**: UI から `/api/*` を FastAPI 製 Orchestrator へ送信し、LangGraph で会話状態（短期/長期/方針）を管理。LlamaIndex + pgvector で RAG、Cohere Rerank v2 で候補を絞り、OpenAI Responses API（将来 Realtime も）で最終応答を生成する。  
-- **前提**: `trait-flow-mvp2.0` は Cloud Run で静的配信。API は別ホストで CORS する。  
-- **コスト**: DB = Cloud SQL for Postgres (pgvector)、推論コストは Responses + Rerank（候補数に比例）。Rerankでトークン消費を削減しつつ精度向上。
+- **前提**: `trait-flow-mvp2.0` の UI は AWS（S3 + CloudFront もしくは App Runner）で静的配信し、FastAPI Orchestrator は別ホスト（App Runner / ECS Fargate）で公開する。  
+- **コスト**: DB = Amazon Aurora PostgreSQL（pgvector 拡張）、推論コストは Responses + Rerank（候補数に比例）。Rerankでトークン消費を削減しつつ精度向上。
 
 ## 2. アーキテクチャ（最小）
 ```mermaid
@@ -50,7 +50,7 @@ sequenceDiagram
    - `/api/respond`: KNN→Rerank→Responses で個人化応答。  
    - LangGraph の State/Edge で短期・長期・方針を持つ DAG を実装。  
 2. **RAG (LlamaIndex サブフロー)**: pgvector の KNN 結果を整形。必要に応じ QueryTransform/Router を活用。  
-3. **DB**: Cloud SQL for Postgres + pgvector。始めは Exact、後で HNSW/IVF に拡張。  
+3. **DB**: Aurora PostgreSQL + pgvector（もしくは Amazon RDS for PostgreSQL）。始めは Exact、後で HNSW/IVF に拡張。  
 4. **Cohere Rerank v2**: 候補 30〜200 件から上位 k=8 を選別し、LLM トークンを節約。  
 5. **OpenAI Responses / Realtime**: 応答生成、将来的な音声・低遅延拡張も視野に。  
 6. **n8n**: Webhook ノードで CRM、通知、GSheet 連携をノーコード化。
@@ -98,14 +98,14 @@ RESP_MODEL=gpt-5
 | --- | --- |
 | P95 レイテンシ | ≤ 900 ms (KNN + Rerank + LLM) |
 | エラー率 | < 1%（再試行・フォールバック） |
-| 可用性 | 99.9%（Cloud Run / Cloud SQL） |
+| 可用性 | 99.9%（App Runner / Aurora PostgreSQL） |
 
 ログ・メトリクスは Orchestrator 内で区間計測し、n8n で CRM/通知フローを構築する。
 
 ## 8. デプロイ
-1. Postgres (Cloud SQL) + pgvector を有効化。  
-2. Orchestrator を Dockerize し Cloud Run へデプロイ。  
-3. Vite UI は従来どおり静的配信（Cloud Run）で `/api/*` を Orchestrator に向ける。  
+1. Aurora PostgreSQL もしくは RDS PostgreSQL で pgvector を有効化。  
+2. Orchestrator を Dockerize し AWS App Runner もしくは ECS Fargate へデプロイ。  
+3. Vite UI は S3 + CloudFront あるいは App Runner で静的配信し、`/api/*` を Orchestrator に向ける。  
 4. n8n は Webhook ノードで CRM/通知と連携。
 
 ## 9. リスク / 次アクション
@@ -115,6 +115,6 @@ RESP_MODEL=gpt-5
 
 ### 次アクション
 1. pgvector テーブル作成・Exact KNN で運用開始。  
-2. Orchestrator 実装 & Cloud Run デプロイ。  
+2. Orchestrator 実装 & App Runner/ECS デプロイ。  
 3. UI から `/api/*` を差し替え、満足度評価 UI を追加。  
 4. n8n Webhook で CRM/通知フローを構築。
