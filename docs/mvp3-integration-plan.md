@@ -36,7 +36,7 @@
 
 ```mermaid
 flowchart LR
-  subgraph Next["trait-flow-screen (Next.js)"]
+ subgraph Next["trait-flow-screen (Next.js)"]
     Marketing["Landing / docs"]
     AppRouter["/en|vi/(protected)/*"]
     BFF["App Router Route Handlers\n/api/checkins, /api/interventions"]
@@ -56,11 +56,15 @@ flowchart LR
 
   Marketing --> AppRouter
   AppRouter -->|SSR fetch| BFF --> Edge
-  Vite -->|Supabase JS (PKCE)| Auth
+  
+  %% --- 修正箇所: ラベル内のテキストを " " で囲みました ---
+  MobileUI -->|"Supabase JS (PKCE)"| Auth
+  
   Auth --> DB
-  BFF -->|Server Action / Route handler| Orc
-  Vite -->|direct HTTPS| Orc
-  Orc --> DB
+  
+  BFF -->|"Server Action / Route handler"| Respond
+  MobileUI -->|direct HTTPS| Respond
+  Respond --> DB
 ```
 
 ### 役割
