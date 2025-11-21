@@ -1,75 +1,62 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Trait Flow v3.0 — Next.js + Supabase + LangGraph Orchestrator
 
-# Trait Flow v3.0 プロトタイプ — 実行とデプロイ
+This repository now mirrors the production-ready prototype that lives in [`trait-flow-screen`](https://github.com/k-naruse3209/trait-flow-screen). It uses the same Next.js 15 + Supabase stack for authentication, TIPI onboarding, mood check-ins, multilingual dashboards, and Server Components, while adding the **AI Coaching** workflow described in [`new_design.md`](./new_design.md) and `docs/ai_coaching_message_design.md`.
 
-このリポジトリ（`k-naruse3209/trait-flow-mvp3.0`）は v2 系の UI 実装を引き継ぎつつ、LangGraph Orchestrator 連携や本番データモデルを反映させた v3.0 向けの最新ドキュメントと設定を管理します。ユーザーの TIPI 回答や日次チェックインを受け付け、AI 介入カードを表示するフローをローカル/AWS（S3 + CloudFront または App Runner）で検証できます。  
-**重要**: 実際の個人化応答は Python 製 Orchestrator（FastAPI + LangGraph + LlamaIndex + pgvector + Cohere Rerank + OpenAI Responses）で実装します。設計詳細は `docs/orchestrator_spec.md` を参照し、UI とは `/api/memory/update` と `/api/respond` で連携してください。GitHub のデフォルトブランチは `main` です。
+The Vite-based proof-of-concept has been replaced with this architecture so that we can ship the new coaching experience without maintaining two separate stacks.
 
-## ローカルでの実行方法
+## Key Features
 
-**前提条件:** Node.js がインストールされていること
+- **Supabase Auth & Data**: App Router pages and Middleware enforce Supabase sessions across locales. Database schema + RLS + Edge Functions live under `supabase/`.
+- **TIPI & Check-ins**: Users complete the Big Five onboarding (`/api/tipi-submit`) and submit daily mood/energy/note check-ins (`/api/checkins`).
+- **AI Coaching via Orchestrator**: Whenever an intervention is required, the Next.js API calls the LangGraph orchestrator (`lib/orchestrator-client.ts`). It sends mood/energy/note/context and receives a structured coaching message that is saved to `interventions`. If the orchestrator is unavailable, the legacy OpenAI fallback from the prototype runs locally.
+- **Dashboards & History**: The dashboard (`app/[locale]/(protected)/dashboard`) displays streaks, mood analytics, interventions, and check-in history using shadcn/ui.
+- **Documentation**: The specs that guided this rewrite live in `docs/` (integration plan, orchestrator spec, system spec, and the new AI coaching design).
 
-1. 依存関係をインストール  
-   `npm install`
-2. （任意）LLM の API キーを `.env.local` の `GEMINI_API_KEY` に設定  
-   ※現在はモック応答を返すため、未設定でも動作します。環境変数は Vite の define でビルド時に注入されます。
-3. 開発サーバーを起動  
-   `npm run dev`
+## Getting Started
 
-## AWS へのデプロイ
-
-UI はビルド済みの静的アセットなので、AWS では以下 2 パターンのいずれかで運用できます。
-
-### オプション A: S3 + CloudFront （静的ホスティング）
-1. **ビルド**
+1. **Install dependencies**
    ```bash
-   npm run build
+   npm install
    ```
-2. **S3 バケット（静的サイト）を用意**  
-   - バケットを作成し「静的ウェブサイトホスティング」を有効化。  
-   - `dist/` を `aws s3 sync dist/ s3://YOUR_BUCKET --delete` で反映。
-3. **CloudFront ディストリビューションを紐付け**  
-   - オリジンに S3 静的エンドポイントを指定。  
-   - `index.html` をデフォルトルートに設定し、必要なら OAC / OAI を構成。
-4. **デプロイ後のキャッシュ無効化（任意）**
+2. **Configure environment**
+   - Copy `.env.example` to `.env.local`.
+   - Fill in:
+     - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+     - `ORCHESTRATOR_URL`, `ORCHESTRATOR_API_KEY`, `ORCHESTRATOR_TIMEOUT_MS`
+     - (Optional) `OPENAI_API_KEY` if you want the built-in fallback generator.
+3. **Run Supabase migrations**
    ```bash
-   aws cloudfront create-invalidation --distribution-id DIST_ID --paths "/*"
+   npx supabase db push
+   ```
+4. **Start the dev server**
+   ```bash
+   npm run dev
    ```
 
-### オプション B: AWS App Runner / ECS Fargate（Nginx + Docker）
-このリポジトリには Dockerfile があり、`start.sh` が `$PORT` を読み取って Nginx を起動します。同じコンテナを AWS App Runner もしくは ECS Fargate に配置できます。
+## Orchestrator Integration
 
-1. **ECR にリポジトリを作成し、イメージをプッシュ**
-   ```bash
-   aws ecr create-repository --repository-name trait-flow-ui
-   aws ecr get-login-password --region ap-northeast-1 | docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com
-   docker build -t trait-flow-ui .
-   docker tag trait-flow-ui:latest ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/trait-flow-ui:latest
-   docker push ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/trait-flow-ui:latest
-   ```
-2. **App Runner にサービスを作成**（例）
-   ```bash
-   aws apprunner create-service \
-     --service-name trait-flow-ui \
-     --source-configuration ImageRepository="{ImageIdentifier=ACCOUNT_ID.dkr.ecr.ap-northeast-1.amazonaws.com/trait-flow-ui:latest,ImageRepositoryType=ECR}" \
-     --instance-configuration Cpu=1 vCpu,Memory=2 GB \
-     --auto-scaling-configuration Arn=arn:aws:apprunner:...:auto-scaling-configuration/DefaultConfiguration/1 \
-     --health-check-configuration Protocol=HTTP,Path=/,Interval=10,Timeout=5,HealthyThreshold=1,UnhealthyThreshold=5
-   ```
-   - ECS/Fargate の場合はタスク定義で同じイメージを指定し、ALB 経由で公開します。
-3. **環境変数**  
-   - 静的サイトのため必須のランタイム変数はありません。ビルド時に `.env.local` を注入する場合は `npm run build` 前に設定してください。
+- `lib/orchestrator-client.ts` encapsulates the POST `/api/respond` call. It passes the payload specified in [`new_design.md`](./new_design.md): mood, energy, last note, analytics (average mood, trend, streak), Big Five traits, and history references.
+- `app/api/checkins/route.ts` now:
+  1. Stores the check-in in Supabase.
+  2. Computes analytics and, when needed, calls `triggerInterventionGeneration`.
+  3. `triggerInterventionGeneration` prefers the orchestrator result; if unavailable, it falls back to the original `processInterventionWithAI`.
+  4. Saves the resulting message to `interventions` so both dashboard and mobile UI consume the same data.
 
-どちらのオプションでも HTTPS/カスタムドメインは ACM（証明書）+ CloudFront / ALB で終端します。
+Configure the orchestrator URL/API key to point at the LangGraph FastAPI deployment described in `docs/orchestrator_spec.md`.
 
-## ドキュメント
-- システム仕様: `docs/system_spec_ja.md`
-- Orchestrator 基本設計: `docs/orchestrator_spec.md`
-- メタデータ: `metadata.json`
+## Repository Structure
 
-## Orchestrator (FastAPI) について
-- 別サービスとして `app/main.py`（FastAPI + LangGraph）を用意し、README 冒頭の設計どおり `/api/memory/update` と `/api/respond` を提供します。
-- 推奨デプロイ: AWS App Runner / ECS Fargate（Dockerfile 例は `docs/orchestrator_spec.md` 参照）、DB は Amazon Aurora PostgreSQL + pgvector 拡張や Supabase Managed Postgres など。  
-- UI からの `fetch('/api/...')` はこの Orchestrator の URL (CORS 許可済み) に向けてください。
+- `app/`: Next.js App Router pages (auth, dashboard, locale-aware routes, API handlers).
+- `components/`: shadcn/ui based UI kit, history widgets, and TIPI/Check-in components.
+- `hooks/`: data fetching hooks powered by Supabase.
+- `lib/`: TIPI scoring, mood analytics, orchestrator + OpenAI clients, monitoring utilities.
+- `supabase/`: migrations, config, and Edge Functions (`tipi-submit`, `traits`).
+- `docs/`: integration plan, system spec, orchestrator spec, Vietnamese font notes, and the new AI coaching design.
+
+## Additional References
+
+- [`new_design.md`](./new_design.md): High-level LangGraph workflow (State Analysis → RAG → Strategy Selection → Generation).
+- [`docs/ai_coaching_message_design.md`](./docs/ai_coaching_message_design.md): Payloads, prompts, KPI plan.
+- [`docs/mvp3-integration-plan.md`](./docs/mvp3-integration-plan.md): How this repo aligns with `trait-flow-screen`.
+
+This setup lets us iterate on one stack (Next.js + Supabase) while rolling out the v3.0 AI coaching experience defined in the new design documents.
