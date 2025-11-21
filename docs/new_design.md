@@ -141,26 +141,3 @@ Orchestrator は生成結果を `interventions` テーブルに保存し、UI �
 
 ---
 
-## 実行手順
-
-以下の手順で新しいブランチを作成し、設計書をアップロードしてください。
-
-### 1. 新しいブランチの作成
-```bash
-git checkout -b feature/ai-coaching-design
-```
-
-### 2. ディレクトリの確認
-`docs/` ディレクトリが存在しない場合は作成してください。
-
-### 3. ファイルの作成
-上記の内容を `docs/ai_coaching_design.md` として保存してください。
-
-### 4. Commit & Push
-```bash
-git add docs/ai_coaching_design.md
-git commit -m "Add AI Coaching System Design based on Orchestrator Spec and Trait Flow Screen logic"
-git push origin feature/ai-coaching-design
-```
-
-これにより、既存の優れたUIロジックと最新のバックエンドAI技術（LangGraph/RAG）を融合させたシステムの設計がリポジトリに反映されます。
