@@ -87,7 +87,8 @@ flowchart LR
 2. **トークン受け渡し** – Next の middleware は Supabase Cookie を参照済み。`/app/*` にディープリンクする際、Vite から `?token=` で PKCE トークンを渡せるエンドポイントを追加する。
 3. **CSR/SSR の整合** – どちらの UI からログインしても Supabase JWT が共有され、片方でログアウトすれば両方から切れる状態を維持する。
 
-### 4.2 API レイヤー
+### 4.2 API レイヤーflowchart LR
+ 
 | Need | Owner | Implementation |
 | --- | --- | --- |
 | TIPI 送信 | Supabase Edge Function (`supabase/functions/tipi-submit/index.ts`) | Vite から `supabase.functions.invoke('tipi-submit')` を呼び出す。Next 側は既存のサーバーアクションで利用。 |
