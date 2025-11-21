@@ -1,4 +1,4 @@
-# Trait Flow Screen × Trait Flow v3.0 統合計画
+# 旧バージョン × Trait Flow v3.0 統合計画
 
 このドキュメントは、`trait-flow-screen`（Next.js + Supabase）に既存の Web 体験を保持しつつ、[`trait-flow-mvp3.0`](https://github.com/k-naruse3209/trait-flow-mvp3.0) が提供する Vite 製モバイル体験を共存させるための設計方針をまとめたものです。両リポジトリの責務、共有すべきサービス、API 契約、そして実装ロードマップを明確にし、単一プロダクトとして機能させることを目指します。
 

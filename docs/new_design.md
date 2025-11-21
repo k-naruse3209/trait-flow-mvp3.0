@@ -159,7 +159,7 @@ git checkout -b feature/ai-coaching-design
 ### 4. Commit & Push
 ```bash
 git add docs/ai_coaching_design.md
-git commit -m "Add AI Coaching System Design based on Orchestrator Spec and Trait Flow Screen logic"
+git commit -m "Add AI Coaching System Design based on Orchestrator Spec and 旧バージョン logic"
 git push origin feature/ai-coaching-design
 ```
 
